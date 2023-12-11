@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title></title>
+		<meta charset="UTF-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<link href="css/style.css" rel="stylesheet">
+		<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" crossorigin="anonymous">
+		<style>
+			body {
+				height: 100vh;
+				display: flex;
+				align-items: center;
+				justify-content: center;
+			}
+			#digits {
+				height: 4.5rem;
+				width: 4.5rem;
+				display: flex;
+			}
+			input::-webkit-outer-spin-button,
+			input::-webkit-inner-spin-button {
+				-webkit-appearance: none;
+				margin: 0;
+			}
+		</style>
+	</head>
+	
+	<body>
+		<div id="start-container" class="container">
+			<div class="row mb-3">
+				<div class="col-12">
+					<input type="checkbox" id="start-with-music">
+				</div>
+			</div>
+			<div class="row mb-3">
+				<div class="col-12">
+						Please dont click on the checkbox above. <br>
+						This is a memory test.<br>
+						You will be shown a sequence of digits for a short period of time.<br>
+						After that you will be asked to enter the digits you saw in the same order.<br>
+						The length of the sequence will increase by one after each correct answer. <br>
+						The test will end when you enter a wrong sequence. <br>
+						Your score will be the length of the longest sequence you memorized correctly. <br>
+						You will perform the test twice with a <span id="countdown-info"></span> minute break in between. <br>
+						If you have questions, please ask them now.<br>
+						Enter your name and press start when you are ready.
+				</div>
+			</div>
+			<div class="row">
+				<div class="col-10">
+					<input type="text" id="name" class="form-control" autocomplete="off"/>
+				</div>
+				<div class="col-2">
+					<button id="start" class="btn btn-primary">Start</button>
+				</div>
+			</div>
+		</div>
+		
+		<div id="test">
+			<div id="digits" class="h1 border border-dark rounded align-items-center p-4"></div>
+			<div id="input-container" class="row">
+				<div class="col-auto">
+					<input type="number" id="input" class="form-control" autocomplete="off"/>
+				</div>
+				<div class="col-auto">
+					<button id="confirm" class="btn btn-primary">Ok</button>
+				</div>
+			</div>
+		</div>
+
+		<div id="countdown-container">
+			Next test in:<br>
+			<span id="countdown" class="h1"></span>
+		</div>
+		
+		<audio src="mozart.mp3"></audio>
+	</body>
+
+	<script>
+
+		const WAIT_TIME = ___WAIT_TIME___;
+		const COUNTDOWN_TIME = ___COUNTDOWN_TIME___;
+
+		document.getElementById("countdown-info").innerText = COUNTDOWN_TIME / 60;
+
+		const audio = document.querySelector('audio');
+		let audioContext;
+
+		const startContainer = document.getElementById("start-container");
+		const start = document.getElementById("start");
+		const nameInput = document.getElementById("name");
+		const test = document.getElementById("test");
+		const inputContainer = document.getElementById("input-container");
+		const confirm = document.getElementById("confirm");
+		const input = document.getElementById("input");
+		const digits = document.getElementById("digits");
+		const countdown = document.getElementById("countdown");
+		const countdownContainer = document.getElementById("countdown-container");
+
+		let sequence = [];
+		let userSequence = [];
+		let score = 0;
+		let name = '';
+		let stage = 0;
+		let music = false;
+
+		function generateSequence() {
+			sequence.push(Math.floor(Math.random() * 10));
+		}
+
+		function createAudioContext() {
+			if (audioContext) {
+				return;
+			}
+
+			audioContext = new AudioContext();
+			const source = audioContext.createMediaElementSource(audio);
+			const gainNode = audioContext.createGain();
+
+			gainNode.gain.value = 0.01;
+			audio.currentTime = 6;
+
+			source.connect(gainNode).connect(audioContext.destination);
+		}
+		
+		function show(element) {
+			element.style.display = '';
+		}
+
+		function hide(element) {
+			element.style.display = 'none';
+		}
+
+		function getSequence() {
+			userSequence = input.value.split('').map((digit) => parseInt(digit));
+		}
+
+		function clearInput() {
+			input.value = '';
+		}
+
+		function checkSequence() {
+			return sequence.length === userSequence.length 
+			&& sequence.every((digit, index) => digit === userSequence[index]);
+		}
+
+		async function storeScore() {
+			try {
+				await fetch('/store', {
+					method: 'POST',
+					headers: {'Content-Type': 'application/json'},
+					body: JSON.stringify({ 
+						name, score,
+						sequence: sequence.join(' '),
+						userSequence: userSequence.join(' '),
+						music: music ? 'yes' : 'no',
+					}),
+				});
+				console.log('Score stored');
+			} catch (error) {
+				console.error('Error:', error);
+			}
+		}
+
+		document.addEventListener('click', (event) => {
+			if (input.style.display === '') {
+				input.focus();
+			}
+		});
+
+		confirm.addEventListener('click', () => {
+			if (input.value === '') {
+				input.focus();
+				return;
+			}
+
+			getSequence();
+			clearInput();
+
+			if(checkSequence()) {
+				score++;
+				runTest();
+
+			} else {
+				storeScore();
+				audio.pause();
+
+				if (stage === 0) {
+					return nextStage();
+				}
+
+				alert(`The test is over. Thank you for participating.`);
+				reset();		
+			}
+		});
+
+		function displayTime(time) {
+			const minutes = Math.floor(time / 60);
+			const seconds = time % 60;
+			countdown.innerText = `${minutes}:${seconds}`;
+		}
+
+		function nextStage() {
+			stage++;
+			music = !music;
+
+			resetScores();
+
+			show(countdownContainer);
+			hide(inputContainer);
+			hide(test);
+			
+			let time = COUNTDOWN_TIME;
+
+			displayTime(time);
+
+			const interval = setInterval(() => {
+				time--;
+				
+				displayTime(time);
+
+				if(time === 0) {
+					clearInterval(interval);
+					
+					startTest();
+				}
+			}, 1000);
+		}
+
+		start.addEventListener('click', () => {
+			if(nameInput.value === '') {
+				alert('Please enter your name');
+				return;
+			}
+
+			name = nameInput.value;
+			music = document.getElementById("start-with-music").checked;
+			startTest();
+		});
+
+		function startTest() {
+
+			createAudioContext();
+
+			hide(countdownContainer);
+			hide(inputContainer);
+			hide(startContainer);
+			hide(test);
+
+			if (music) {
+				audio.currentTime = 6;
+				audio.play();
+			} else {
+				audio.pause();
+			}
+
+			setTimeout(() => {
+				show(test);
+				runTest();
+			}, 3000);
+		}
+
+		async function presentDigits() {
+			return new Promise((resolve) => {
+				show(digits);
+				
+				let i = 0;
+				interval = setInterval(() => {
+					
+					digits.innerText = sequence[i];
+
+					setTimeout(() => {
+						digits.innerText = '';
+					}, 1000);
+
+					i++;
+
+					if(i === sequence.length) {
+						clearInterval(interval);
+						
+						setTimeout(() => {
+							digits.innerText = '';
+							resolve();
+						}, 1200);
+					}
+				}, 1200);
+
+			});
+
+		}
+
+		async function runTest() {
+			hide(inputContainer);
+			generateSequence();
+
+			await presentDigits();
+			
+			hide(digits);
+			show(inputContainer);
+			input.focus();
+		}
+
+		function resetScores() {
+			sequence = [];
+			userSequence = [];
+			score = 0;
+		}
+
+		function reset() {	
+			resetScores();
+			stage = 0;
+			nameInput.value = '';
+
+			hide(test);
+			hide(countdownContainer);
+			show(startContainer);
+
+			nameInput.focus();
+		}
+
+		reset();
+
+	</script>
+
+</html>

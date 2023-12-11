@@ -1,0 +1,6 @@
+{
+  "timeInterval": 2000,
+  "dataFilePath": "./scores.txt",
+  "port": 3000,
+  "breakInterval": 300 
+}
